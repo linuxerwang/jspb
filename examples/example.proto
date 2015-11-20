@@ -1,0 +1,52 @@
+/**
+ * This is an example of protocol buffers.
+ */
+
+syntax = "proto3";
+
+package examples;
+
+import "depends/depended.proto";
+
+// Enum for book categories.
+enum Category {
+	UNKNOWN = 0;
+	HISTORY = 1;
+	SICENCE = 2;
+	FICTION = 3;
+}
+
+// Message for books.
+message Book {
+	// Enum for reader type.
+	enum Reader {
+		UNKNOWN = 0;
+		ADULTS = 1;
+		CHILDREN = 2;
+		MALE = 3;
+		FEMAIL = 4;
+	}
+
+	message Chapter {
+		// Enum for the chapter styles.
+		enum Style {
+			UNKNOWN = 0;
+			RTL = 1;
+			LTR = 2;
+			TTB = 3;
+			BTT = 4;
+		}
+		string name = 1;
+		Style style = 2;
+	}
+
+	string name = 1;
+	int64 publish_time = 2;
+	int32 pages = 3;
+	depends.Publisher publisher = 4;
+
+	repeated Category categories = 11;
+	repeated Reader readers = 12;
+	repeated string authors = 13;
+	repeated Chapter chapters = 14;
+}

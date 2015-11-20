@@ -1,0 +1,10 @@
+syntax = "proto3";
+
+package depends;
+
+// Message for publishers.
+message Publisher {
+  string name = 1;
+  int64 since = 2;
+  string address = 3;
+}
