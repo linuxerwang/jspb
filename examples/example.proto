@@ -44,6 +44,7 @@ message Book {
 	int64 publish_time = 2;
 	int32 pages = 3;
 	depends.Publisher publisher = 4;
+	bool borrowed = 5;
 
 	repeated Category categories = 11;
 	repeated Reader readers = 12;

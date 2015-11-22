@@ -842,6 +842,7 @@ AllFiles:
 
 			g.P("goog.require('", g.PkgPrefix, ".", f.GetPackage(), ".", ccTypeName, "');")
 		}
+		g.P("goog.require('goog.array');")
 	}
 }
 
@@ -885,8 +886,9 @@ func (g *Generator) TypeNameWithPackage(obj Object) string {
 	return obj.PackageName() + CamelCaseSlice(obj.TypeName())
 }
 
-// JsType returns a string representing the type name, and the wire type
-func (g *Generator) JsType(message *Descriptor, field *descriptor.FieldDescriptorProto) (typ string, wire string) {
+// JsType returns a string representing the type name, element type (empty
+// if it's not an array of messages), and the wire type.
+func (g *Generator) JsType(message *Descriptor, field *descriptor.FieldDescriptorProto) (typ, eleTyp string, wire string) {
 	// TODO: Options.
 	switch *field.Type {
 	case descriptor.FieldDescriptorProto_TYPE_DOUBLE:
@@ -929,9 +931,11 @@ func (g *Generator) JsType(message *Descriptor, field *descriptor.FieldDescripto
 		g.Fail("unknown type for", field.GetName())
 	}
 	if isRepeated(field) {
-		if *field.Type == descriptor.FieldDescriptorProto_TYPE_MESSAGE ||
-			*field.Type == descriptor.FieldDescriptorProto_TYPE_ENUM {
-			typ = "Array.<" + g.PkgPrefix + "." + message.PackageName() + "." + typ + ">"
+		if *field.Type == descriptor.FieldDescriptorProto_TYPE_MESSAGE {
+			eleTyp = g.PkgPrefix + "." + message.PackageName() + "." + typ
+			typ = "Array.<" + eleTyp + ">"
+		} else if *field.Type == descriptor.FieldDescriptorProto_TYPE_ENUM {
+			typ = "Array.<number>"
 		} else {
 			typ = "Array.<" + typ + ">"
 		}
@@ -985,7 +989,6 @@ func (g *Generator) generateMessage(message *Descriptor) {
 		g.P(message.PackageName(), ".", ccTypeName, " = function(jsonData) {")
 	}
 	g.In()
-
 	g.P("/**")
 	g.P(" * @private {Object}")
 	g.P(" */")
@@ -994,10 +997,25 @@ func (g *Generator) generateMessage(message *Descriptor) {
 	g.P("};")
 	g.P()
 
+	// Generate getJsonData().
+	g.P("/**")
+	g.P(" * @return {Object} The JSON data.")
+	g.P(" */")
+	if g.PkgPrefix != "" {
+		g.P(g.PkgPrefix, ".", message.PackageName(), ".", ccTypeName, ".getJsonData", " = function() {")
+	} else {
+		g.P(message.PackageName(), ".", ccTypeName, ".getJsonData = function() {")
+	}
+	g.In()
+	g.P("return this.jsonData_;")
+	g.Out()
+	g.P("};")
+	g.P()
+
 	// Default constants
 	defNames := make(map[*descriptor.FieldDescriptorProto]string)
 	for _, field := range message.Field {
-		typename, _ := g.JsType(message, field)
+		typename, _, _ := g.JsType(message, field)
 
 		def := field.GetDefaultValue()
 		if def != "" {
@@ -1052,7 +1070,7 @@ func (g *Generator) generateMessage(message *Descriptor) {
 		base := CamelCase(*field.Name)
 		ns := allocNames(base, "get"+base, "set"+base)
 		fieldName, fieldGetterName, fieldSetterName := ns[0], ns[1], ns[2]
-		typename, _ := g.JsType(message, field)
+		typename, eleTyp, _ := g.JsType(message, field)
 
 		fieldNames[field] = fieldName
 		fieldGetterNames[field] = fieldGetterName
@@ -1085,8 +1103,8 @@ func (g *Generator) generateMessage(message *Descriptor) {
 			if d, ok := desc.(*Descriptor); ok && d.GetOptions().GetMapEntry() {
 				// Figure out the Go types and tags for the key and value types.
 				keyField, valField := d.Field[0], d.Field[1]
-				keyType, _ := g.JsType(d, keyField)
-				valType, _ := g.JsType(d, valField)
+				keyType, _, _ := g.JsType(d, keyField)
+				valType, _, _ := g.JsType(d, valField)
 
 				// We don't use stars, except for message-typed values.
 				// Message and enum types are the only two possibly foreign types used in maps,
@@ -1147,13 +1165,35 @@ func (g *Generator) generateMessage(message *Descriptor) {
 			g.P(message.PackageName(), ".", ccTypeName, ".prototype.", fieldGetterName, " = function() {")
 		}
 		g.In()
-		g.P("var v = this.jsonData_[\"" + field.GetName() + "\"];")
-		g.P("if (v) {")
-		g.In()
-		g.P("return v;")
-		g.Out()
-		g.P("}")
-		g.P("return " + defNames[field] + ";")
+		if *field.Type == descriptor.FieldDescriptorProto_TYPE_MESSAGE {
+			g.P(fmt.Sprintf("if (this.%s_) {", field.GetName()))
+			g.In()
+			g.P(fmt.Sprintf("return this.%s_;", field.GetName()))
+			g.Out()
+			g.P("}")
+			g.P("var v = this.jsonData_[\"" + field.GetName() + "\"];")
+			g.P("if (v) {")
+			g.In()
+			if eleTyp != "" {
+				g.P(fmt.Sprintf("/** @private {%s} */", typename))
+				g.P(fmt.Sprintf("this.%s_ = [];", field.GetName()))
+				g.P("goog.array.forEach(v, function(__item, __index) {")
+				g.In()
+				g.P(fmt.Sprintf("this.%s_.push(new %s(__item));", field.GetName(), eleTyp))
+				g.Out()
+				g.P("}, this);")
+				g.P(fmt.Sprintf("return this.%s_;", field.GetName()))
+			} else {
+				g.P(fmt.Sprintf("/** @private {%s} */", typename))
+				g.P(fmt.Sprintf("this.%s_ = new %s(v);", field.GetName(), typename))
+				g.P(fmt.Sprintf("return this.%s_;", field.GetName()))
+			}
+			g.Out()
+			g.P("}")
+			g.P("return " + defNames[field] + ";")
+		} else {
+			g.P(fmt.Sprintf("return this.jsonData_[\"%s\"] || ", field.GetName()), defNames[field], ";")
+		}
 		g.Out()
 		g.P("};")
 		g.P()
@@ -1170,7 +1210,31 @@ func (g *Generator) generateMessage(message *Descriptor) {
 			g.P(message.PackageName(), ".", ccTypeName, ".prototype.", fieldSetterName, " = function(", field.GetName(), ") {")
 		}
 		g.In()
-		g.P("this.jsonData_[\"" + field.GetName() + "\"] = " + field.GetName() + ";")
+		if *field.Type == descriptor.FieldDescriptorProto_TYPE_MESSAGE {
+			if eleTyp != "" {
+				g.P(fmt.Sprintf("var __data = %s.getJsonData();", field.GetName()))
+				g.P("if (__data) {")
+				g.In()
+				g.P("var __array = [];")
+				g.P("goog.array.forEach(__data, function(__item, __index) {")
+				g.In()
+				g.P("__array.push(__item.getJsonData());")
+				g.Out()
+				g.P("}, this);")
+				g.P(fmt.Sprintf("this.jsonData_[\"%s\"] = __array;", field.GetName()))
+				g.Out()
+				g.P("} else {")
+				g.In()
+				g.P(fmt.Sprintf("this.jsonData_[\"%s\"] = [];", field.GetName()))
+				g.Out()
+				g.P("}")
+			} else {
+				g.P("this.jsonData_[\"" + field.GetName() + "\"] = " + field.GetName() + ".getJsonData();")
+			}
+			g.P(fmt.Sprintf("this.%s_ = undefined;", field.GetName()))
+		} else {
+			g.P("this.jsonData_[\"" + field.GetName() + "\"] = " + field.GetName() + ";")
+		}
 		g.Out()
 		g.P("};")
 		g.P()
