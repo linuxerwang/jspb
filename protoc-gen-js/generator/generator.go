@@ -862,9 +862,14 @@ func (g *Generator) generateEnum(enum *EnumDescriptor) {
 	} else {
 		g.P(g.file.GetPackage(), ".", ccTypeName, " = {")
 	}
-	for _, v := range enum.GetValue() {
+	n := len(enum.GetValue())
+	for i, v := range enum.GetValue() {
 		g.In()
-		g.P(fmt.Sprintf("%s = %d;", v.GetName(), v.GetNumber()))
+		if i < n-1 {
+			g.P(fmt.Sprintf("%s: %d,", v.GetName(), v.GetNumber()))
+		} else {
+			g.P(fmt.Sprintf("%s: %d", v.GetName(), v.GetNumber()))
+		}
 		g.Out()
 	}
 	g.P("};")
@@ -1002,7 +1007,7 @@ func (g *Generator) generateMessage(message *Descriptor) {
 	g.P(" * @return {Object} The JSON data.")
 	g.P(" */")
 	if g.PkgPrefix != "" {
-		g.P(g.PkgPrefix, ".", message.PackageName(), ".", ccTypeName, ".getJsonData", " = function() {")
+		g.P(g.PkgPrefix, ".", message.PackageName(), ".", ccTypeName, ".prototype.getJsonData", " = function() {")
 	} else {
 		g.P(message.PackageName(), ".", ccTypeName, ".getJsonData = function() {")
 	}
