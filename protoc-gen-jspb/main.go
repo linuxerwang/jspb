@@ -12,7 +12,7 @@ import (
 	"os"
 
 	"github.com/golang/protobuf/proto"
-	"github.com/linuxerwang/jspb/protoc-gen-js/generator"
+	"github.com/linuxerwang/jspb/protoc-gen-jspb/generator"
 )
 
 func main() {
