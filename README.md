@@ -10,7 +10,7 @@ information from goprotobuf.
 
 # Installation
 
-go get github.com/linuxerwang/jspb/protoc-gen-js
+go get github.com/linuxerwang/jspb/protoc-gen-jspb
 
 # Uses
 
